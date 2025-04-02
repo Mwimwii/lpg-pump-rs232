@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./database.sqlite"
+}
+
+model Transaction {
+  id                Int    @id @default(autoincrement())
+  scaleId           Int
+  operatorId        Int
+  initialMass       Float
+  tareMass          Float
+  fillMass          Float
+  lastMeasurement   Float
+  fillSequence      Int
+  statusCode        Int
+  createdAt         DateTime @default(now())
+}
