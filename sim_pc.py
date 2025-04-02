@@ -7,46 +7,67 @@ BAUD_RATE = 9600
 
 # Define polling interval
 POLL_INTERVAL = 2  # Poll every 2 seconds
+RECONNECT_DELAY = 5  # Wait 5s before reconnecting
+
+def connect_serial():
+    """Try to establish a serial connection."""
+    while True:
+        try:
+            ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+            print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
+            return ser
+        except serial.SerialException as e:
+            print(f"Serial connection failed: {e}. Retrying in {RECONNECT_DELAY}s...")
+            time.sleep(RECONNECT_DELAY)
 
 def send_command(ser, command):
     """Send a formatted command to the scale."""
-    full_command = f"${command}*"
-    ser.write(full_command.encode())
-    print(f"Sent: {full_command}")
+    try:
+        full_command = f"${command}*"
+        ser.write(full_command.encode())
+        print(f"Sent: {full_command}")
+    except serial.SerialException as e:
+        print(f"Write error: {e}")
 
 def read_response(ser):
-    """Read the response from the scale."""
-    response = ser.readline().decode().strip()
-    if response:
-        print(f"Received: {response}")
-    return response
+    """Read and return a response from the scale."""
+    try:
+        response = ser.readline().decode().strip()
+        if response:
+            print(f"Received: {response}")
+        return response
+    except serial.SerialException as e:
+        print(f"Read error: {e}")
+        return None
 
 def parse_response(response):
-    """Parse the response into fields."""
+    """Parse response into a dictionary."""
     if response.startswith("$") and response.endswith("*"):
         parts = response[1:-1].split(",")
-        return {
-            "Scale ID": parts[0],
-            "Command": parts[1],
-            "Spare": parts[2],
-            "Operator ID": parts[3],
-            "Initial Mass": parts[4],
-            "Tare Mass": parts[5],
-            "Fill Mass": parts[6],
-            "Last Measurement": parts[7],
-            "Fill Sequence": parts[8],
-            "Status Code": int(parts[9])
-        }
+        try:
+            return {
+                "Scale ID": parts[0],
+                "Command": parts[1],
+                "Spare": parts[2],
+                "Operator ID": parts[3],
+                "Initial Mass": parts[4],
+                "Tare Mass": parts[5],
+                "Fill Mass": parts[6],
+                "Last Measurement": parts[7],
+                "Fill Sequence": parts[8],
+                "Status Code": int(parts[9])
+            }
+        except (IndexError, ValueError):
+            print("Error parsing response.")
     return None
 
 def main():
-    try:
         # Open serial connection
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
+    ser = connect_serial()  # Initial connection
 
-        while True:
-            # Send poll command (e.g., request status)
+    while True:
+        try:
+            # Send poll request (requesting status)
             send_command(ser, "1,0")  # Scale ID = 1, Command = 0 (status request)
 
             # Read and parse response
@@ -64,13 +85,15 @@ def main():
             # Wait for next polling cycle
             time.sleep(POLL_INTERVAL)
 
-    except serial.SerialException as e:
-        print(f"Serial error: {e}")
-    except KeyboardInterrupt:
-        print("\nPolling stopped by user.")
-    finally:
-        ser.close()
-        print("Serial connection closed.")
+        except serial.SerialException:
+            print("Connection lost! Attempting to reconnect...")
+            ser.close()
+            ser = connect_serial()  # Auto-reconnect
+
+        except KeyboardInterrupt:
+            print("\nPolling stopped by user.")
+            ser.close()
+            break
 
 if __name__ == "__main__":
     main()
