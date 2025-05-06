@@ -1,7 +1,7 @@
 import serial
 
 # Open the virtual COM port
-ser = serial.Serial('/dev/ttys005', 9600, timeout=2)  # Adjust COM port
+ser = serial.Serial('/dev/ttys008', 9600, timeout=2)  # Adjust COM port
 
 while True:
     data = ser.readline().decode().strip()
