@@ -1,10 +1,14 @@
+import sys, os
 import serial
 import time
 import logging
 import requests
+from math import nan
 
+# -- region constants and init --
+SERIAL_PORT_UNIX = '/dev/ttys'  # Change to "COMx" on Windows
+SERIAL_PORT_WINDOWS = 'COM'  # Change to "COMx" on Windows
 # Configure the serial connection (adjust COM port as needed)
-SERIAL_PORT = "/dev/ttys007"  # Change to "COMx" on Windows
 BAUD_RATE = 9600
 
 # Define polling interval
@@ -21,16 +25,17 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+# -- end region --
 
-def connect_serial():
+def connect_serial(port):
     logging.info("Starting RS232 Polling Script...")
 
     """Try to establish a serial connection."""
     while True:
         try:
-            ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-            print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
-            logging.info(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
+            ser = serial.Serial(port, BAUD_RATE, timeout=1)
+            print(f"Connected to {port} at {BAUD_RATE} baud.")
+            logging.info(f"Connected to {port} at {BAUD_RATE} baud.")
             return ser
         except serial.SerialException as e:
             print(f"Serial connection failed: {e}. Retrying in {RECONNECT_DELAY}s...")
@@ -82,10 +87,7 @@ def parse_response(response):
             logging.info("Error parsing response.")
     return None
 
-def main():
-    # Open serial connection
-    ser = connect_serial()  # Initial connection
-
+def run(ser):
     while True:
         try:
             # Send poll request (requesting status)
@@ -126,5 +128,24 @@ def main():
             ser.close()
             break
 
+def main():
+    try:
+        print(sys.argv[1])
+        if(int(sys.argv[1]) is nan):
+            raise ValueError(sys.argv[1], 'is not a number') 
+        port_unix = SERIAL_PORT_UNIX + str(sys.argv[1])
+        port_win32 = SERIAL_PORT_WINDOWS + str(sys.argv[1])
+        if sys.platform == "win32":
+            ser = connect_serial(port_win32)  # Initial connection
+            run(ser)
+        else:
+            ser = connect_serial(port_unix)
+            run(ser)
+    except IndexError as e:
+        print('You must provide the serial pair (001, 002, 003) for UNIX based systems or (1, 2, 3) for Windows com ports\npython sim_pc.py 007')
+    
+
+
+    
 if __name__ == "__main__":
     main()
