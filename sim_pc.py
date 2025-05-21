@@ -15,7 +15,8 @@ BAUD_RATE = 9600
 POLL_INTERVAL = 2  # Poll every 2 seconds
 RECONNECT_DELAY = 5  # Wait 5s before reconnecting
 
-API_URL = "http://localhost:3000/transactions"
+# API_URL = "http://localhost:3000/transactions"
+API_URL = "https://lpg-dev.zambiancivilservant.workers.dev/api/transactions"
 LOG_FILE = "transactions.log"
 
 # --- SETUP LOGGING ---
@@ -26,6 +27,42 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 # -- end region --
+
+STATUS_CODES = {
+    10: "Ready", 
+    11: "Ready (Data Pending Upload)",
+    20: "Enter Tare Weight", 
+    21: "Enter Tare Weight (Data Pending Upload)",
+    30: "Tare Error", 
+    31: "Tare Error (Data Pending Upload)",
+    40: "Enter Fill Weight", 
+    41: "Enter Fill Weight (Data Pending Upload)",
+    50: "Filling Cylinder...", 
+    51: "Filling Cylinder... (Data Pending Upload)",
+    60: "Filling Error", 
+    61: "Filling Error (Data Pending Upload)",
+    70: "Fill Complete - Remove Cylinder",
+    71: "Fill Complete - Remove Cylinder (Data Pending Upload)",
+}
+
+def get_status(code):
+    """Gets a user-friendly status string for a given ADCENG status code."""
+    if code is None:
+        return "Status Unknown"
+
+    # Check for the +1 indicating data stored in EEPROM
+    data_pending = ""
+    base_code = code
+    if code % 2 != 0 and code > 10: # Check if odd and not a base code itself if base codes could be odd
+         # A simpler check might be based on known codes:
+         if code in [11, 21, 31, 41, 51, 61, 71]:
+             base_code = code - 1
+             data_pending = " (Data Pending Upload)"
+
+    # Lookup the base code
+    status_text = STATUS_CODES.get(base_code, f"Unknown Status (Code: {base_code})")
+
+    return status_text + data_pending
 
 def connect_serial(port):
     logging.info("Starting RS232 Polling Script...")
@@ -100,9 +137,9 @@ def run(ser):
                 if data:
                     print(f"Parsed Data: {data}")
 
-                    # Check if status is 70 (fill complete)
-                    if data and data["statusCode"] == 70:
-                        print("Fill complete! Requesting transaction data...")
+                    # Check if the status code indicates a completed transaction
+                    if data:
+                        print(get_status(data["statusCode"]))
                         response = requests.post(API_URL, json=data)
                         if response.status_code == 200:
                             print("Transaction complete! Saving to database...")
