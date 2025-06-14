@@ -2,10 +2,11 @@
 
 ## Overview
 
-This project provides a system for interacting with ADCENG LPG filling scales (referred to as "pumps") via RS232 serial communication. It includes:
+This project provides a monorepo for interacting with ADCENG LPG filling scales (referred to as "pumps") via RS232 serial communication. It includes:
 1.  A Python application (`sim_pc.py`) to act as a host computer, polling the scale, sending commands, parsing responses, and logging transactions to a backend API.
 2.  A Python script (`sim_pump.py`) to simulate the behavior of an ADCENG LPG scale for development and testing purposes.
 3.  A Node.js backend server (`server.js`) using Express and Prisma to store and retrieve transaction data from the scales.
+3.  A DOTNET tester (`csharp/PayGasConsoleTester.csproj`) to test the communication protocol.
 
 The system is designed to work with actual ADCENG scales connected to a Windows PC and also allows for a fully simulated environment on a single Windows machine using virtual serial ports.
 
@@ -60,6 +61,7 @@ The system is designed to work with actual ADCENG scales connected to a Windows 
 * **Prisma:** ORM for database interaction.
 * **SQLite:** Default database used by Prisma in this setup (can be changed in `prisma/schema.prisma`).
 * **(For Windows Simulation) com0com:** Virtual null-modem emulator to create linked pairs of virtual COM ports.
+* **.NET:** For the DOTNET tester (`csharp/PayGasConsoleTester.csproj`).
 
 ## Prerequisites
 
@@ -79,6 +81,8 @@ The system is designed to work with actual ADCENG scales connected to a Windows 
     * Download from [com0com.sourceforge.net](http://com0com.sourceforge.net/).
     * **IMPORTANT:** See the "com0com Setup on Windows for Simulation" section below for critical installation notes regarding driver signatures and Secure Boot.
 
+5.  **.NET:**
+    * Required to test the communication protocol.
 ## Setup Instructions
 
 1.  **Clone the Repository (if applicable) or Extract Project Files.**
@@ -158,6 +162,15 @@ The system is designed to work with actual ADCENG scales connected to a Windows 
             python sim_pc.py 3
             ```
         * `sim_pc.py` will attempt to connect to the physical scale on `COM3`.
+
+## Testing using the DOTNET Tester
+* **Run the DOTNET Build:**
+    * Navigate to the `csharp` directory.
+    * Run `dotnet build` to build the project.
+* **Run the DOTNET Tester:**
+    * Navigate to the `csharp` directory.
+    * Run `dotnet run` to run the project.
+    * The tester will prompt you to enter a command choice. Enter `exit` to exit the application.
 
 ## Configuration
 
