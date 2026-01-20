@@ -3,14 +3,16 @@
 ##
 ## Get latest from `dotnet new gitignore`
 node_modules
+.vscode
+build
 # Keep environment variables out of version control
 transactions.log
 .python-version
 .venv
-
+dist
 # dotenv files
 .env
-
+log_*
 # User-specific files
 *.rsuser
 *.suo

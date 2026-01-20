@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.IO.Ports; // Required for SerialPort
 using System.Text;     // Required for Encoding
 using System.Threading; // Required for Thread.Sleep and CancellationTokenSource
@@ -29,27 +29,32 @@ namespace PayGasConsoleTester
                 Console.WriteLine("\nCtrl+C pressed. Exiting application...");
             };
 
-            // --- Serial Port Configuration ---
-            string portName = "COM8"; // IMPORTANT: Verify this is your correct COM port!
+            // --- Serial Port Configuration (EDIT THESE VALUES FOR TESTING) ---
+            string portName = "COM7"; // IMPORTANT: Verify this is your correct COM port!
             int baudRate = 9600;      
             Parity parity = Parity.None;
             int dataBits = 8;
             StopBits stopBits = StopBits.One;
 
+            // Handshaking is often the source of serial communication issues.
+            // A common setup for devices that don't use full flow control is to have DTR and RTS enabled.
+            bool dtrEnableSetting = true; // DTR (Data Terminal Ready) signals the PC is on.
+            bool rtsEnableSetting = true; // RTS (Request To Send) signals the PC is ready.
+            // Handshake.None is the most common setting. If the device requires hardware flow control,
+            // and you have a correctly wired null modem, you might need Handshake.RequestToSend.
+            Handshake handshakeSetting = Handshake.None;
+
             _serialPort = new SerialPort();
 
             try
             {
-                _serialPort.PortName = portName;
-                _serialPort.BaudRate = baudRate;
-                _serialPort.Parity = parity;
-                _serialPort.DataBits = dataBits;
-                _serialPort.StopBits = stopBits;
-                _serialPort.DtrEnable = true; 
-                _serialPort.RtsEnable = true; 
+                _serialPort.PortName = portName; _serialPort.BaudRate = baudRate;
+                _serialPort.Parity = parity; _serialPort.DataBits = dataBits;
+                _serialPort.StopBits = stopBits; _serialPort.DtrEnable = dtrEnableSetting; 
+                _serialPort.RtsEnable = rtsEnableSetting; 
                 _serialPort.ReadTimeout = 1000; 
                 _serialPort.WriteTimeout = 500;
-                // _serialPort.Handshake = Handshake.None; 
+                _serialPort.Handshake = handshakeSetting; 
 
                 _serialPort.DataReceived += new SerialDataReceivedEventHandler(Sp_DataReceived);
 
