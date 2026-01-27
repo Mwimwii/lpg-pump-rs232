@@ -88,7 +88,7 @@ class AdcengDriver():
             31: "Tare Error (Data Pending Upload)",
             40: "Enter Fill Weight",
             41: "Enter Fill Weight (Data Pending Upload)",
-            50: "Filling Cylinder...",
+            65: "Filling Cylinder...",
             51: "Filling Cylinder... (Data Pending Upload)",
             60: "Filling Error",
             61: "Filling Error (Data Pending Upload)",
@@ -116,7 +116,7 @@ class AdcengDriver():
             return "Status Unknown"
 
         base_code = code
-        if code in [11, 21, 31, 41, 51, 61, 71]: # Explicit check for pending codes
+        if code in [11, 21, 31, 41, 51, 61, 65]: # Explicit check for pending codes
             base_code = code - 1
 
         status_text = self.status_codes.get(code, f"Unknown Status (Code: {code})") 
@@ -139,7 +139,7 @@ class AdcengDriver():
     def send_command(self, command):
         """Send a formatted command to the scale."""
         try:
-            full_command = f"?*"
+            full_command = f"${command}*"
             # full_command = f"${command}*"
             self.serial.write(full_command.encode('ascii'))
             print(f"Sent: {full_command}")
@@ -193,7 +193,7 @@ def run(ser_port_name, baud_rate): # Accept port name and baud rate
     while True:
         try:
             # Send poll request (requesting status)
-            adceng_driver.send_command("1,0")  # Scale ID = 1, Command = 0 (status request)
+            adceng_driver.send_command("1,1")  # Scale ID = 1, Command = 0 (status request)
 
             # Read and parse response
             response_str = adceng_driver.read_response() # Renamed to avoid conflict
@@ -272,8 +272,12 @@ def main():
     
     print(f"Starting Cleanergy LPG Script for port: {target_port} at {args.baud} baud.")
     logging.info(f"Script started. Target Port: {target_port}, Baud Rate: {args.baud}")
-    run(target_port, args.baud)
-
+    # run(target_port, args.baud)
+    
+    adceng_driver = AdcengDriver(target_port, args.baud, RECONNECT_DELAY, POLL_INTERVAL, LOG_FILE)
+    adceng_driver.send_command("1,1")  # Scale ID = 1, Command = 0 (status request)
+    response_str = adceng_driver.read_response() 
+    print(response_str)
 
 if __name__ == "__main__":
     main()

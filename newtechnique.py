@@ -8,7 +8,7 @@ BAUD_RATE = 9600
 DATA_BITS = serial.EIGHTBITS
 PARITY = serial.PARITY_NONE
 STOP_BITS = serial.STOPBITS_ONE
-SERIAL_READ_TIMEOUT = 0.1 
+SERIAL_READ_TIMEOUT =2 
 SERIAL_WRITE_TIMEOUT = 10
 
 # SET THIS TO True or False to test with/without hardware flow control
@@ -118,8 +118,8 @@ if __name__ == "__main__":
             write_timeout=SERIAL_WRITE_TIMEOUT,
             rtscts=SERIAL_RTSCTS 
         )
-        ser.dtr = False 
-        ser.rts = False 
+        ser.dtr = True 
+        ser.rts = True 
 
         if ser.is_open:
             print(f"[{time.strftime('%H:%M:%S')}] [MainThread  ] Serial port {ser.name} opened successfully (DTR={ser.dtr}, RTS={ser.rts}, RTSCTS={ser.rtscts}).")
@@ -127,14 +127,13 @@ if __name__ == "__main__":
             reader.start()
             time.sleep(0.5) # Let reader thread initialize
 
-            print(f"\n[{time.strftime('%H:%M:%S')}] [MainThread  ] Sending '^start*'.")
+            print(f"\n[{time.strftime('%H:%M:%S')}] [MainThread  ] Sending '$1,1*'.")
             print(f"[{time.strftime('%H:%M:%S')}] [MainThread  ] ACTION: If required by device, perform physical action (e.g., 'connect cylinder') NOW.")
-            send_command_with_terminations("?*") 
-            # send_command_with_terminations("^start*") 
+            send_command_with_terminations("$1,1*") 
             
-            print(f"\n[{time.strftime('%H:%M:%S')}] [MainThread  ] Listening for 20 seconds for response to '^start*'...")
+            print(f"\n[{time.strftime('%H:%M:%S')}] [MainThread  ] Listening for 20 seconds for response to '$1,1'...")
             print(f"[{time.strftime('%H:%M:%S')}] [MainThread  ] (Reader thread will print '...listening...' periodically if no data is received)")
-            time.sleep(20)
+            time.sleep(2)
 
             # Example of sending a subsequent command if the first one seemed to work
             # You would typically only do this if you received an expected response from '^start*'
