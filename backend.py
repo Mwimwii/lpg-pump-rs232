@@ -61,8 +61,14 @@ async def lifespan(app: FastAPI):
     if initial_resp:
         print(f"Configuration OK - initial response: {initial_resp}")
         parsed = driver.parse_response(initial_resp)
-        status_text = driver.get_status(parsed.get("statusCode")) if parsed else "Parse failed (short/incomplete response)"
-        print(f"Initial status: {status_text}")
+        if parsed:
+            status_code = parsed.get("statusCode")
+            status_text = driver.get_status(status_code) if status_code else "Status code not available"
+            print(f"Initial status: {status_text} (Code: {status_code})")
+            if parsed.get("shortResponse"):
+                print("Note: Received short status response")
+        else:
+            print("Parse failed - unexpected response format")
     else:
         print("Warning: No response to initial poll - check wiring/power/serial settings")
 
@@ -89,10 +95,11 @@ def get_status():
     parsed = driver.parse_response(raw) if raw else None
 
     if parsed:
-        parsed["status_text"] = driver.get_status(parsed.get("statusCode"))
+        status_code = parsed.get("statusCode")
+        parsed["status_text"] = driver.get_status(status_code) if status_code else "Unknown"
         return parsed
 
-    return {"raw_response": raw or "No response", "parsed": False, "note": "Short responses (like status-only) are common and will be improved in parse_response later"}
+    return {"raw_response": raw or "No response", "parsed": False, "error": "Failed to parse response"}
 
 
 @app.post("/start-fill")

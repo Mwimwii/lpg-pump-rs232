@@ -171,18 +171,35 @@ class AdcengDriver():
         if response and response.startswith("$") and response.endswith("*"): # Added check for non-empty response
             parts = response[1:-1].split(",")
             try:
-                parsed_data = {
-                    "scaleId": int(parts[0]),
-                    "operatorId": int(parts[3]),
-                    "initialMass": float(parts[4]),
-                    "tareMass": float(parts[5]),
-                    "fillMass": float(parts[6]),
-                    "lastMeasurement": float(parts[7]),
-                    "fillSequence": int(parts[8]),
-                    "statusCode": int(parts[9]),
-                }
-                logging.info(f"Parsed Data: {parsed_data}")
-                return parsed_data
+                # Check if this is a short status response (e.g., $1,1,41,6*)
+                if len(parts) < 10:
+                    # Handle short responses - these appear to be status/acknowledgment messages
+                    parsed_data = {
+                        "scaleId": int(parts[0]) if len(parts) > 0 else None,
+                        "commandCode": int(parts[1]) if len(parts) > 1 else None,
+                        "statusCode": int(parts[2]) if len(parts) > 2 else None,
+                        "checksum": int(parts[3]) if len(parts) > 3 else None,
+                        "shortResponse": True,
+                        "rawResponse": response
+                    }
+                    logging.info(f"Parsed short response: {parsed_data}")
+                    return parsed_data
+                else:
+                    # Full response with all fields
+                    parsed_data = {
+                        "scaleId": int(parts[0]),
+                        "operatorId": int(parts[3]),
+                        "initialMass": float(parts[4]),
+                        "tareMass": float(parts[5]),
+                        "fillMass": float(parts[6]),
+                        "lastMeasurement": float(parts[7]),
+                        "fillSequence": int(parts[8]),
+                        "statusCode": int(parts[9]),
+                        "shortResponse": False,
+                        "rawResponse": response
+                    }
+                    logging.info(f"Parsed Data: {parsed_data}")
+                    return parsed_data
             except (IndexError, ValueError) as e:
                 print(f"Error parsing response: {response}. Error: {e}")
                 logging.error(f"Error parsing response: {response}. Error: {e}")
