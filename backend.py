@@ -119,23 +119,32 @@ class TransactionResponse(BaseModel):
 
 # --- ADCENG DRIVER ---
 class AdcengDriver:
-    STATUS_CODES = {
-        10: "Ready",
-        11: "Ready (Data Pending Upload)",
-        20: "Enter Tare Weight",
-        21: "Enter Tare Weight (Data Pending Upload)",
-        30: "Tare Error",
-        31: "Tare Error (Data Pending Upload)",
-        40: "Enter Fill Weight",
-        41: "Enter Fill Weight (Data Pending Upload)",
-        50: "Filling Cylinder...",
-        51: "Filling Cylinder... (Data Pending Upload)",
-        60: "Filling Error",
-        61: "Filling Error (Data Pending Upload)",
-        65: "Filling Cylinder...",  # Alternative filling code
-        70: "Fill Complete - Remove Cylinder",
-        71: "Fill Complete - Remove Cylinder (Data Pending Upload)",
+    # Base status codes (divisible by 8) - from ADCENG COMMS.txt
+    # Lower 3 bits are flags:
+    #   bit0 (+1): EEPROM data pending (use cmd 4 to read, cmd 5 to ack)
+    #   bit1 (+2): Current transaction data available (use cmd 2 to read, cmd 3 to ack)
+    BASE_STATUS_CODES = {
+        8: "Idle",
+        16: "Tare Entered",
+        24: "Tare Error",
+        32: "Fill Entered",
+        40: "Pumping",
+        48: "Fill Error",
+        56: "Fill Complete",
+        64: "Zeroing",
     }
+
+    @staticmethod
+    def decode_status(code: int) -> tuple:
+        """Decode status code into base status and flags.
+        Returns: (base_status, has_eeprom_data, has_current_data)
+        """
+        if code is None:
+            return (None, False, False)
+        base_status = code & 0xF8  # Strip lower 3 bits
+        has_eeprom_data = bool(code & 0x01)  # bit0
+        has_current_data = bool(code & 0x02)  # bit1
+        return (base_status, has_eeprom_data, has_current_data)
 
     def __init__(self, port: str, baud_rate: int = 9600):
         self.port = port
@@ -164,9 +173,22 @@ class AdcengDriver:
         return self.serial is not None and self.serial.is_open
 
     def get_status_text(self, code: Optional[int]) -> str:
+        """Get human-readable status text from status code."""
         if code is None:
             return "Status Unknown"
-        return self.STATUS_CODES.get(code, f"Unknown Status (Code: {code})")
+
+        base_status, has_eeprom, has_current = self.decode_status(code)
+        base_text = self.BASE_STATUS_CODES.get(base_status, f"Unknown Base Status ({base_status})")
+
+        flags = []
+        if has_eeprom:
+            flags.append("EEPROM data pending")
+        if has_current:
+            flags.append("Current data available")
+
+        if flags:
+            return f"{base_text} [{', '.join(flags)}]"
+        return base_text
 
     def send_command(self, command: str):
         """Send a formatted command to the scale."""
@@ -190,7 +212,14 @@ class AdcengDriver:
             return None
 
     def parse_response(self, response: str) -> Optional[dict]:
-        """Parse scale response into a structured dictionary."""
+        """Parse scale response into a structured dictionary.
+
+        Short response format: $scale_id,cmd,status[,progress]*
+        - During pumping (status 40), 4th field is progress (1-10)
+
+        Full response format: $scale_id,cmd,?,operator_id,initial,tare,fill,last,seq,status*
+        - Mass values are raw integers, divide by 100 to get kg
+        """
         if not response or not response.startswith("$") or not response.endswith("*"):
             return None
 
@@ -198,23 +227,34 @@ class AdcengDriver:
         try:
             if len(parts) < 10:
                 # Short status response
-                return {
+                status_code = int(parts[2]) if len(parts) > 2 else None
+                base_status, _, _ = self.decode_status(status_code)
+
+                result = {
                     "scale_id": int(parts[0]) if len(parts) > 0 else None,
                     "command_code": int(parts[1]) if len(parts) > 1 else None,
-                    "status_code": int(parts[2]) if len(parts) > 2 else None,
-                    "checksum": int(parts[3]) if len(parts) > 3 else None,
+                    "status_code": status_code,
                     "short_response": True,
                     "raw_response": response
                 }
+
+                # During pumping (base status 40), 4th field is progress indicator (1-10)
+                if base_status == 40 and len(parts) > 3:
+                    result["progress"] = int(parts[3])
+                elif len(parts) > 3:
+                    result["checksum"] = int(parts[3])
+
+                return result
             else:
                 # Full response with transaction data
+                # Mass values are transmitted as integers (e.g., 1000 = 10.00 kg)
                 return {
                     "scale_id": int(parts[0]),
                     "operator_id": int(parts[3]),
-                    "initial_mass": float(parts[4]),
-                    "tare_mass": float(parts[5]),
-                    "fill_mass": float(parts[6]),
-                    "last_measurement": float(parts[7]),
+                    "initial_mass": float(parts[4]) / 100.0,
+                    "tare_mass": float(parts[5]) / 100.0,
+                    "fill_mass": float(parts[6]) / 100.0,
+                    "last_measurement": float(parts[7]) / 100.0,
                     "fill_sequence": int(parts[8]),
                     "status_code": int(parts[9]),
                     "short_response": False,
@@ -238,7 +278,12 @@ polling_enabled = True
 
 # --- BACKGROUND POLLING ---
 async def poll_loop(scale_id: str = "1"):
-    """Background task that continuously polls the pump and logs transactions."""
+    """Background task that continuously polls the pump and logs transactions.
+
+    Status code bit flags (from ADCENG COMMS.txt):
+    - bit0 (+1): EEPROM data pending - use command 4 to read, command 5 to ack
+    - bit1 (+2): Current transaction data available - use command 2 to read, command 3 to ack
+    """
     global driver, polling_enabled
 
     last_status_code = None
@@ -256,9 +301,9 @@ async def poll_loop(scale_id: str = "1"):
                         logger.error(f"Reconnection failed: {e}")
                 continue
 
-            # Poll for status
+            # Poll for status (command 1)
             driver.send_command(f"{scale_id},1")
-            await asyncio.sleep(0.3)  # Give device time to respond
+            await asyncio.sleep(0.3)
             response = driver.read_response()
 
             if response:
@@ -267,31 +312,69 @@ async def poll_loop(scale_id: str = "1"):
                     status_code = data.get("status_code")
                     status_text = driver.get_status_text(status_code)
 
+                    # Decode status flags
+                    base_status, has_eeprom_data, has_current_data = driver.decode_status(status_code)
+
                     # Log status changes
                     if status_code != last_status_code:
-                        logger.info(f"Status changed: {status_text} (Code: {status_code})")
+                        logger.info(f"Status changed: {status_text} (Code: {status_code}, Base: {base_status})")
                         last_status_code = status_code
 
-                    # Save full transaction data to database when we have it
+                    # Log progress during pumping
+                    if base_status == 40 and "progress" in data:
+                        logger.info(f"Pumping progress: {data['progress']}/10")
+
+                    # Handle bit1: Current transaction data available (command 2/3)
+                    if has_current_data:
+                        logger.info("Current transaction data available (bit1 set), requesting with command 2...")
+                        await asyncio.sleep(0.2)
+                        driver.send_command(f"{scale_id},2")
+                        await asyncio.sleep(0.3)
+                        full_response = driver.read_response()
+                        if full_response:
+                            full_data = driver.parse_response(full_response)
+                            if full_data and not full_data.get("short_response"):
+                                logger.info(f"Received current transaction: {full_response}")
+                                fill_sequence = full_data.get("fill_sequence")
+                                if fill_sequence != last_fill_sequence:
+                                    save_transaction(full_data)
+                                    last_fill_sequence = fill_sequence
+                                    logger.info(f"Transaction saved: fill_sequence={fill_sequence}")
+                                # Acknowledge receipt (command 3)
+                                logger.info("Acknowledging current transaction (command 3)...")
+                                driver.send_command(f"{scale_id},3")
+                                await asyncio.sleep(0.2)
+                                driver.read_response()  # Read ack response
+
+                    # Handle bit0: EEPROM data pending (command 4/5) - catch-up mode
+                    if has_eeprom_data and not has_current_data:
+                        logger.info("EEPROM data pending (bit0 set), requesting with command 4...")
+                        await asyncio.sleep(0.2)
+                        driver.send_command(f"{scale_id},4")
+                        await asyncio.sleep(0.3)
+                        eeprom_response = driver.read_response()
+                        if eeprom_response:
+                            eeprom_data = driver.parse_response(eeprom_response)
+                            if eeprom_data and not eeprom_data.get("short_response"):
+                                logger.info(f"Received EEPROM transaction: {eeprom_response}")
+                                fill_sequence = eeprom_data.get("fill_sequence")
+                                if fill_sequence != last_fill_sequence:
+                                    save_transaction(eeprom_data)
+                                    last_fill_sequence = fill_sequence
+                                    logger.info(f"EEPROM transaction saved: fill_sequence={fill_sequence}")
+                                # Acknowledge EEPROM data (command 5)
+                                logger.info("Acknowledging EEPROM data (command 5)...")
+                                driver.send_command(f"{scale_id},5")
+                                await asyncio.sleep(0.2)
+                                driver.read_response()  # Read ack response
+
+                    # If we got full data in the initial response, save it
                     if not data.get("short_response"):
                         fill_sequence = data.get("fill_sequence")
-
-                        # Only save if this is a new transaction (different fill_sequence)
-                        # or if status indicates completion (70, 71)
-                        should_save = (
-                            fill_sequence != last_fill_sequence or
-                            status_code in [70, 71]
-                        )
-
-                        if should_save and fill_sequence is not None:
+                        if fill_sequence != last_fill_sequence and fill_sequence is not None:
                             save_transaction(data)
                             last_fill_sequence = fill_sequence
-                            logger.info(f"Transaction saved: fill_sequence={fill_sequence}, status={status_text}")
-
-                            # If data pending upload (odd status codes), confirm receipt
-                            if status_code and status_code % 2 == 1:
-                                logger.info("Confirming data receipt to scale...")
-                                driver.send_command(f"{scale_id},2")  # Acknowledge command
+                            logger.info(f"Transaction saved from poll: fill_sequence={fill_sequence}")
 
         except serial.SerialException as e:
             logger.error(f"Serial error during polling: {e}")
