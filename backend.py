@@ -6,6 +6,7 @@
 #   python backend.py --port 10 --host 0.0.0.0 --api-port 8000
 # Or with uvicorn:
 #   SERIAL_PORT=COM7 uvicorn backend:app --reload --host 0.0.0.0 --port 8000
+# Connect to host computer with id 285428038
 
 import os
 import sys
@@ -18,6 +19,8 @@ from typing import Optional
 
 import serial
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, Float, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -75,10 +78,14 @@ class Transaction(Base):
     last_measurement = Column(Float, nullable=False)
     fill_sequence = Column(Integer, nullable=False)
     status_code = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False}
+)
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -629,6 +636,26 @@ def health_check():
         "database": "sqlite",
         "database_path": DATABASE_PATH
     }
+
+
+# --- STATIC FILE SERVING ---
+FRONTEND_DIR = os.path.join(script_dir, "frontend", "dist")
+
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+
+    @app.get("/")
+    def serve_index():
+        """Serve the frontend index.html."""
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    @app.get("/{path:path}")
+    def serve_spa(path: str):
+        """Catch-all for SPA routing - serve index.html for non-API routes."""
+        file_path = os.path.join(FRONTEND_DIR, path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 # --- CLI ENTRY POINT ---
