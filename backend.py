@@ -549,6 +549,17 @@ def list_transactions(
         session.close()
 
 
+@app.get("/transactions/count")
+def count_transactions():
+    """Return total number of transactions."""
+    session = SessionLocal()
+    try:
+        total = session.query(Transaction).count()
+        return {"total": total}
+    finally:
+        session.close()
+
+
 @app.post("/transactions", response_model=TransactionResponse)
 def create_transaction(data: TransactionCreate):
     """Manually create a transaction record."""
