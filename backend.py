@@ -735,7 +735,7 @@ def main():
     print()
 
     uvicorn.run(
-        "backend:app",
+        app,
         host=args.host,
         port=args.api_port,
         reload=args.reload

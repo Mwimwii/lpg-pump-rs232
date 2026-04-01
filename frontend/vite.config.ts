@@ -13,6 +13,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/transactions': 'http://localhost:8000',
+      '/status': 'http://localhost:8000',
+      '/polling': 'http://localhost:8000',
+      '/health': 'http://localhost:8000',
+      '/start-fill': 'http://localhost:8000',
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
