@@ -422,28 +422,33 @@ def save_transaction(data: dict):
 async def lifespan(app: FastAPI):
     global driver, polling_task, polling_enabled
 
-    serial_port = os.environ.get("SERIAL_PORT")
-    if not serial_port:
-        logger.error(
-            "SERIAL_PORT not set. Set via environment variable or .env file.\n"
-            "Example: SERIAL_PORT=COM7 or SERIAL_PORT=/dev/ttys010"
-        )
-        raise RuntimeError("SERIAL_PORT environment variable is required")
+    no_serial = os.environ.get("NO_SERIAL", "").lower() in ("1", "true", "yes")
 
-    serial_baud = int(os.environ.get("SERIAL_BAUD", str(DEFAULT_BAUD_RATE)))
+    if no_serial:
+        logger.warning("Running in no-serial mode — serial/polling endpoints disabled")
+    else:
+        serial_port = os.environ.get("SERIAL_PORT")
+        if not serial_port:
+            logger.error(
+                "SERIAL_PORT not set. Set via environment variable or .env file.\n"
+                "Example: SERIAL_PORT=COM7 or SERIAL_PORT=/dev/ttys010"
+            )
+            raise RuntimeError("SERIAL_PORT environment variable is required")
 
-    logger.info(f"Connecting to {serial_port} at {serial_baud} baud...")
+        serial_baud = int(os.environ.get("SERIAL_BAUD", str(DEFAULT_BAUD_RATE)))
 
-    try:
-        driver = AdcengDriver(serial_port, serial_baud)
-    except Exception as e:
-        logger.error(f"Failed to initialize driver: {e}")
-        raise
+        logger.info(f"Connecting to {serial_port} at {serial_baud} baud...")
 
-    # Start background polling
-    polling_enabled = True
-    polling_task = asyncio.create_task(poll_loop())
-    logger.info("Background polling started")
+        try:
+            driver = AdcengDriver(serial_port, serial_baud)
+        except Exception as e:
+            logger.error(f"Failed to initialize driver: {e}")
+            raise
+
+        # Start background polling
+        polling_enabled = True
+        polling_task = asyncio.create_task(poll_loop())
+        logger.info("Background polling started")
 
     yield
 
@@ -682,8 +687,10 @@ def resolve_port(port_arg: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="LPG Pump Backend Server")
-    parser.add_argument("--port", required=True,
+    parser.add_argument("--port", required=False, default=None,
                         help="Serial port (e.g., COM3, /dev/ttys10, or just a number)")
+    parser.add_argument("--no-serial", action="store_true",
+                        help="Disable serial/polling (API and database only)")
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD_RATE,
                         help=f"Baud rate (default: {DEFAULT_BAUD_RATE})")
     parser.add_argument("--host", default="0.0.0.0",
@@ -696,12 +703,21 @@ def main():
     args = parser.parse_args()
 
     # Set environment variables for the lifespan function
-    serial_port = resolve_port(args.port)
-    os.environ["SERIAL_PORT"] = serial_port
-    os.environ["SERIAL_BAUD"] = str(args.baud)
+    if args.no_serial:
+        os.environ["NO_SERIAL"] = "1"
+        serial_port = None
+    elif args.port is None:
+        parser.error("--port is required unless --no-serial is specified")
+    else:
+        serial_port = resolve_port(args.port)
+        os.environ["SERIAL_PORT"] = serial_port
+        os.environ["SERIAL_BAUD"] = str(args.baud)
 
     print(f"Starting LPG Pump Backend")
-    print(f"  Serial: {serial_port} @ {args.baud} baud")
+    if args.no_serial:
+        print(f"  Serial: disabled (no-serial mode)")
+    else:
+        print(f"  Serial: {serial_port} @ {args.baud} baud")
     print(f"  API: http://{args.host}:{args.api_port}")
     print(f"  Database: {DATABASE_PATH}")
     print(f"  Log file: {LOG_FILE}")
